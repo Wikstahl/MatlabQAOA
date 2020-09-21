@@ -20,4 +20,19 @@ The code is executed using the `problem.m` script file. To get started you begin
 6. `ParticleSwarm`
 7. `BruteForce`
 
-When you run the `problem.m` script file, it will call on the QAOA algorithm (**qaoa.m**) file using the `qaoa` function. This function can have up to six input variables: two are required the rest are optional! The required ones are: **1**. The eigenvalues of the cost Hamiltonian `cost` and **2**. The number of iterations or depth `p` of the QAOA algorithm. The optional ones are  **3**. The `gamma` angles; **4**. The `beta` angles; **5.** The classical optimizer and **6** potential starting points for the classical optimizer to use. The qaoa function will return the final variational state |γ,β⟩ (using either the given input angles or the best-found angles by the classical optimizer) and the result from the classical optimizer as a struct data type.
+When you run the `problem.m` script file, it will call on the QAOA algorithm (**qaoa.m**) file using the `qaoa` function. This function can have up to six input variables: two are required the rest are optional! The required ones are: **1**. The eigenvalues of the cost Hamiltonian `cost` and **2**. The number of iterations `p` of the QAOA algorithm. The optional ones are  **3**. The `gamma` angles; **4**. The `beta` angles; **5.** The classical optimizer and **6** potential starting points for the classical optimizer to use. The qaoa function will return the final variational state |γ,β⟩ (using either the given input angles or the best-found angles by the classical optimizer) and the result from the classical optimizer as a struct data type.
+
+A typical example could be
+```
+% Eigenvalues of the Cost Hamiltonian given as a column vector for a single spin 1/2 particle
+cost = [1;-1];
+
+% Circuit depth
+p = 1;
+% Angles
+gamma = [];
+beta = [];
+% Classical optimizer
+minimizer = 'GlobalSearch';
+[final_state,result] = qaoa(cost,p,gamma,beta,minimizer);
+```
