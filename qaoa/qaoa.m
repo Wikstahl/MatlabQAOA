@@ -1,113 +1,141 @@
-function [final_state,result] = qaoa(cost,p,gamma,beta,minimizer,x0)
-%
-%     Quantum Approximate Optimization Algorithm.
-% 
-%     Parameters
-%     ----------
-%     cost : 1-D array (column vector) containing all the values of the cost
-%           function.
-% 
-%     p : integer
-%         The number of iterations.
-% 
-%     gamma : Either an empty or 1-p array (row vector) containing the 
-%             optimal angles. (optional)
-% 
-%     beta : Either an empty or 1-p array (row vector) containing the 
-%            optimal angles. (optional)
-% 
-%     minimizer : string (optional)
-%                 Optimization algorithm 'GlobalSearch' (default), 
-%                 'MultiStart', 'Bayesian', BayesianHybridNelderMead, 
-%                 'NelderMead','ParticleSwarm','BruteForce'.
-%
-%     x0 : 1-2p array (row vector) (optional)
-%          Starting-points for level p.
-% 
-%     Returns
-%     -------
-%     final_state : 1-D array (column vector)
-%         Returns the state vector |γ,β⟩
-% 
-%     result : struct with fields
-%         The result from the minimizer
-%
-%
+classdef qaoa < matlab.System
 
-% if no variational parameters are given simply set them as empty arrays.
-if (~exist('gamma', 'var') && ~exist('beta', 'var'))
-    gamma = []; beta = [];
-end
-
-if ~exist('minimizer', 'var') 
-    minimizer = 'GlobalSearch';
-end
-
-% declare variables
-q = log2(length(cost)); % Number of qubits required
-sigma_x = [0 1;1 0]; % Pauli sigma-x matrix
-
-X = cell(1,q);
-for i = 1:q
-    % Creates the i:th Palui sigma-x matrix and stores it in a cell.
-    X{i} = {2^(i-1),sigma_x,2^(q-i)};
-end
-
-% Construct the initial state vector |+⟩ = H^(⊗N)·|0⟩⊗|0⟩⊗...⊗|0⟩
-s = 1 / sqrt(2^q) * ones(2^q,1);
-
-if size(gamma) ~= size(beta)
-    % Check if gamma and beta are arrays of equal size.
-    error('The arrays gamma and beta must be of equal size.')
-
-elseif isempty(gamma) == 1
-    % If gamma and beta are empty arrays find the optimal angles.
-    if ~exist('x0', 'var') 
-        x0 = pi * rand(1,2*p); % random start-point;
+    % Attributes
+    properties
+        % Default Variables
+        cost;
+        
+        Steps = 1;
+        
+        Minimizer {mustBeMember(Minimizer,...
+        {'GlobalSearch',...
+        'MultiStart',...
+        'Bayesian',...
+        'Nelder-Mead',...
+        'BruteForce'})}...
+        = 'GlobalSearch';
+    
+        MinimOptions;
+        
+        OptimOptions;
     end
-    
-    % Create problem structure
-    problem = struct();
-    problem.lb = zeros(2*p,1); % lower bounds
-    problem.ub = pi * ones(2*p,1); % upper bounds
-    problem.x0 = x0; % initial points
-    problem.objective = @(x)expval(x,cost,p,q,s,X); % objective function
- 
-    addpath('qaoa/optimization')
-    if ~exist('minimizer','var') || strcmp(minimizer,'GlobalSearch')
-        result = gs(problem);
-        xmin = result.xmin;
-    elseif strcmp(minimizer,'MultiStart')
-        result = ms(problem);
-        xmin = result.xmin;
-    elseif strcmp(minimizer,'Bayesian')
-        result = bso(problem);
-        xmin = result.XAtMinObjective{1,:};
-    elseif strcmp(minimizer,'BruteForce')
-        result = brute(problem);
-        xmin = result.xmin;
-    elseif strcmp(minimizer,'NelderMead')
-        result = nm(problem);
-        xmin = result.xmin;
-    elseif strcmp(minimizer,'BayesianHybridNelderMead')
-        result = baynm(problem);
-        xmin = result.xmin;
-    elseif strcmp(minimizer,'ParticleSwarm')
-        result = pso(problem);
-        xmin = result.xmin;
-    end
-    
-    % The found optimal angles.  
-    gamma = xmin(1:p);
-    beta = xmin((p+1):2*p);
-    
-elseif size(gamma) ~= p
-    % If gamma and beta are given by nonempty arrays verify that they have
-    % correct dimensions, i.e. that they are equal to p.
-    error('The number of total angles must be equal to 2p.')
-else
-    result = 0;
-end
 
-% Final state |γ,β⟩ = U(B,β_p)U(C,γ_p)···U(B,β_1)U(C,γ_1)|s⟩
-final_state = variational_state(cost,p,q,s,X,gamma,beta);
+    properties(Dependent,Hidden)
+        qubits;
+        dimensions;
+        initial_state;
+    end
+
+    methods
+        %% Getters
+        function qubits = get.qubits(self)
+           qubits = log2(length(self.cost));
+        end
+        
+        function dimensions = get.dimensions(self)
+            dimensions = length(self.cost);
+        end
+        
+        function initial_state = get.initial_state(self)
+            initial_state = 1 / sqrt(self.dimensions) * ones(self.dimensions,1);
+        end      
+
+        %% Constructor
+        function self = qaoa(cost, varargin)
+            self.cost = cost;
+            if nargin > 1
+                % Convert string arrays to character arrays
+                [varargin{:}] = convertStringsToChars(varargin{:});
+                setProperties(self,length(varargin),varargin{:});
+            end
+            if isempty(self.gamma) && isempty(self.beta)
+                self.gamma = pi * rand(1,self.Steps);
+                self.beta = pi * rand(1,self.Steps);
+            end
+        end
+
+        function result = qaoa_optimize(self, steps, minimizer, minim_options, optim_options)
+            %Optimize
+            % 
+            Optimizer(steps, minimizer, minim_options, optim_options)
+           
+            
+            % Create problem structure
+            problem = struct();
+            problem.lb = zeros(2*p,1); % lower bounds
+            problem.ub = pi * ones(2*p,1); % upper bounds
+            problem.x0 = self.x0; % initial points
+            problem.objective = @(x)expval(x,self); % objective function
+
+            addpath('qaoa/optimization')
+            if ~exist('minimizer','var') || strcmp(minimizer,'GlobalSearch')
+                result = gs(problem);
+                xmin = result.xmin;
+            elseif strcmp(minimizer,'MultiStart')
+                result = ms(problem);
+                xmin = result.xmin;
+            elseif strcmp(minimizer,'Bayesian')
+                result = bso(problem);
+                xmin = result.XAtMinObjective{1,:};
+            elseif strcmp(minimizer,'BruteForce')
+                result = brute(problem);
+                xmin = result.xmin;
+            elseif strcmp(minimizer,'NelderMead')
+                result = nm(problem);
+                xmin = result.xmin;
+            elseif strcmp(minimizer,'ParticleSwarm')
+                result = pso(problem);
+                xmin = result.xmin;
+            end
+            
+        end
+
+        function [f] = expval(x,self)
+            %     Calculate the expectation value f = ⟨γ,β|C|γ,β⟩, and the
+            %     gradient of the expectation value.
+            %
+            %     Returns
+            %     -------
+            %     f : float
+            %         Returns the expectation value of ⟨γ,β|C|γ,β⟩
+
+
+            % variational parameters
+            self.gamma = x(1:self.Steps);
+            self.beta = x((self.Steps+1):2*self.Steps);
+
+            % state |γ,β⟩ = U(B,β_p)U(C,γ_p) ... U(B,β_1)U(C,γ_1)|+⟩
+            var_state = variational_state(self);
+
+            % calculate the expectation value f = ⟨γ,β|C|γ,β⟩
+            f = real(dot(var_state, self.cost .* var_state));
+        end
+
+        function [s] = variational_state(self,gamma,beta)
+            %     Constructs the variational quantum state |γ,β⟩
+            %
+            %     Returns
+            %     -------
+            %     var_state : 1-2^n Array (column vector)
+            %         Returns the state vector |γ,β⟩.
+            
+            s = self.initial_state;
+            % Final state |γ,β⟩ = U(B,β_p)U(C,γ_p) ... U(B,β_1)U(C,γ_1)|s⟩
+            for i = 1:self.Steps
+                % |s⟩ = U(C,γ_i)·|s⟩
+                % Hadamard product, in other words, we do an entrywise product, since
+                % the Hamiltonian is diagonal.
+                s = exp(-1j * self.gamma(i) * self.cost) .* s;
+
+                % |s⟩ = U(B,β_i)*|s⟩
+                for j = 1:self.qubits
+                    % Construct the rotation matrix and apply it to the state vector.
+                    % Use fast Kronecker matrix multiplication for matrices
+                    % Copyright (c) 2015, Matthias Kredler https://goo.gl/D8jyMw
+                    s = cos(self.beta(i)) * s ...
+                        - 1j * sin(self.beta(i)) * kronm(self.sigmaX{j},s);
+                end
+            end
+        end
+    end
+end
